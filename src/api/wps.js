@@ -1,23 +1,92 @@
-// WPS API 封装
-// 由于WPS API需要后端认证，这里使用本地缓存数据模式
-// 实际部署时，可以通过后端API转发WPS请求
+// WPS API 封装 - 支持后端API和本地JSON双模式
+// 优先使用后端API获取实时数据，后端不可用时回退到本地静态JSON
 
-const FILE_ID = 'RUPn6afnmxMEihs1Bb5N1xUmgNcNGTwmW';
-const WPS_BASE = 'https://api.wps.cn/office';
+const API_BASE = import.meta.env.VITE_API_BASE || '';
+const USE_API = import.meta.env.VITE_USE_API !== 'false';
 
-// 本地缓存数据（从之前读取的WPS表格数据导出）
-// 实际使用时，这些数据应该通过后端API从WPS实时获取
+// Sheet ID 映射
+const SHEET_IDS = [2, 13, 1, 11, 5, 15];
 
-// 模拟从WPS获取sheet数据
-// 实际部署时，这里应该调用后端API
-export async function fetchSheetData(sheetId, range) {
-  // 这里使用本地JSON数据文件
-  // 实际部署时改为 fetch('/api/sheet/...')
-  const response = await fetch(`/data/sheet_${sheetId}.json`);
-  if (!response.ok) {
-    throw new Error('Failed to fetch sheet data');
+/**
+ * 从后端API获取所有sheet数据（实时同步模式）
+ */
+async function fetchFromApi() {
+  const response = await fetch(`${API_BASE}/api/all`);
+  if (!response.ok) throw new Error('API fetch failed');
+  const result = await response.json();
+  
+  const sheets = {};
+  for (const [id, info] of Object.entries(result.sheets)) {
+    sheets[parseInt(id)] = parseRangeData(info.rangeData);
   }
-  return response.json();
+  return sheets;
+}
+
+/**
+ * 从本地JSON文件获取数据（静态模式）
+ */
+async function fetchFromLocal(sheetId) {
+  const response = await fetch(`/data/sheet_${sheetId}.json`);
+  if (!response.ok) throw new Error(`Failed to load sheet ${sheetId}`);
+  const data = await response.json();
+  return parseRangeData(data.rangeData);
+}
+
+/**
+ * 加载所有sheet数据 - 自动选择数据源
+ */
+export async function loadAllSheets() {
+  // 首先尝试从后端API获取
+  if (USE_API) {
+    try {
+      console.log('📡 正在从后端API获取实时数据...');
+      const sheets = await fetchFromApi();
+      console.log('✅ 实时数据加载成功');
+      return sheets;
+    } catch (e) {
+      console.warn('⚠️ 后端API不可用，切换到本地数据:', e.message);
+    }
+  }
+  
+  // 回退到本地JSON
+  console.log('📂 从本地JSON加载数据...');
+  const sheets = {};
+  for (const id of SHEET_IDS) {
+    try {
+      sheets[id] = await fetchFromLocal(id);
+    } catch (e) {
+      console.error(`Failed to load sheet ${id}:`, e);
+    }
+  }
+  console.log('✅ 本地数据加载完成');
+  return sheets;
+}
+
+/**
+ * 触发后端数据同步
+ */
+export async function triggerSync() {
+  if (!USE_API) return null;
+  try {
+    const response = await fetch(`${API_BASE}/api/sync`, { method: 'POST' });
+    return response.json();
+  } catch (e) {
+    console.warn('Sync trigger failed:', e);
+    return null;
+  }
+}
+
+/**
+ * 获取同步状态
+ */
+export async function getSyncStatus() {
+  if (!USE_API) return null;
+  try {
+    const response = await fetch(`${API_BASE}/api/health`);
+    return response.json();
+  } catch (e) {
+    return null;
+  }
 }
 
 // 从WPS API原始格式解析为结构化数据

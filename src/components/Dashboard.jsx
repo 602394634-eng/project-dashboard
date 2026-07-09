@@ -17,8 +17,22 @@ const TABS = [
   { id: 'meeting', label: '例会视图', icon: '📅' },
 ];
 
+function formatTime(timestamp) {
+  if (!timestamp) return '--';
+  const d = new Date(timestamp * 1000);
+  const now = new Date();
+  const diffMs = now - d;
+  const diffMin = Math.floor(diffMs / 60000);
+  
+  if (diffMin < 1) return '刚刚';
+  if (diffMin < 60) return `${diffMin} 分钟前`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} 小时前`;
+  return d.toLocaleString('zh-CN');
+}
+
 export function Dashboard() {
-  const { data: sheets, loading, error, refresh } = useDashboardData();
+  const { data: sheets, loading, error, refresh, syncInfo, isSyncing } = useDashboardData();
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedProject, setSelectedProject] = useState(null);
 
@@ -73,14 +87,32 @@ export function Dashboard() {
               <div className="text-2xl">📊</div>
               <div>
                 <h1 className="text-lg font-bold text-gray-800">项目管理看板</h1>
-                <p className="text-xs text-gray-500">营运部 · 实时数据</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-xs text-gray-500">营运部 · WPS实时同步</p>
+                  {syncInfo && (
+                    <span className="inline-flex items-center gap-1 text-xs text-green-600">
+                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                      在线
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {syncInfo && (
+                <span className="text-xs text-gray-400 hidden md:inline">
+                  上次同步: {formatTime(syncInfo.last_sync)}
+                </span>
+              )}
               <button 
                 onClick={refresh}
-                className="p-2 text-gray-500 hover:text-blue-600 transition-colors"
-                title="刷新数据"
+                disabled={isSyncing}
+                className={`p-2 rounded-lg transition-colors ${
+                  isSyncing 
+                    ? 'text-blue-400 animate-spin' 
+                    : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
+                }`}
+                title="同步WPS数据"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -124,7 +156,12 @@ export function Dashboard() {
       {/* 底部 */}
       <footer className="bg-white border-t border-gray-200 mt-8">
         <div className="max-w-7xl mx-auto px-4 py-4 text-center text-sm text-gray-400">
-          项目管理看板 · 数据来源：WPS云表格 · 更新时间：2026-07-09
+          项目管理看板 · 数据来源：WPS云表格 · 
+          {syncInfo ? (
+            <span>最后同步：{formatTime(syncInfo.last_sync)} · 自动刷新：5分钟</span>
+          ) : (
+            <span>离线模式（本地数据）</span>
+          )}
         </div>
       </footer>
     </div>
